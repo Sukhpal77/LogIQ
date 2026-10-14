@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: logiq
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          env:
+            - name: POSTGRES_DB
+              value: logiq
+            - name: POSTGRES_USER
+              value: logiq
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: logiq-secrets, key: postgres-password } }
+          ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: pgdata }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 20Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: logiq
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432, targetPort: 5432 }]
+  clusterIP: None

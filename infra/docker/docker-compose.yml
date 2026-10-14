@@ -1,0 +1,106 @@
+name: logiq
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-logiq}
+      POSTGRES_USER: ${POSTGRES_USER:-logiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-logiq}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logiq"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: public.ecr.aws/docker/library/redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "always", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-logiq}
+      POSTGRES_USER: ${POSTGRES_USER:-logiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-logiq}
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      BILLING_PROVIDER: ${BILLING_PROVIDER:-sandbox}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      INGEST_API_KEY: ${INGEST_API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      ANALYSIS_INTERVAL_SECONDS: ${ANALYSIS_INTERVAL_SECONDS:-60}
+      ANALYSIS_WINDOW_MINUTES: ${ANALYSIS_WINDOW_MINUTES:-15}
+      RETENTION_DAYS: ${RETENTION_DAYS:-30}
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  fluent-bit:
+    profiles: ["legacy-collector"]
+    image: cr.fluentbit.io/fluent/fluent-bit:3.1
+    environment:
+      LOGIQ_INGEST_TOKEN: ${INGEST_API_KEY:-}
+    volumes:
+      - ../fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ../fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - backend
+
+  prometheus:
+    image: quay.io/prometheus/prometheus:v2.54.1
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+    depends_on:
+      - backend
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.8.2
+    ports: ["9100:9100"]
+    pid: host
+    volumes:
+      - /:/host:ro
+    command:
+      - '--path.rootfs=/host'
+
+  dashboard:
+    build:
+      context: ../../frontend/dashboard
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: logiq
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: { matchLabels: { app: redis } }
+  template:
+    metadata: { labels: { app: redis } }
+    spec:
+      containers:
+        - name: redis
+          image: public.ecr.aws/docker/library/redis:7-alpine
+          ports: [{ containerPort: 6379 }]
+          args: ["--appendonly", "yes", "--appendfsync", "always", "--maxmemory-policy", "noeviction"]
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: redis-data}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: logiq
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 5Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: logiq
+spec:
+  selector: { app: redis }
+  ports: [{ port: 6379, targetPort: 6379 }]

@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: logiq-migrate
+  namespace: logiq
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: logiq/backend:latest
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - {name: POSTGRES_HOST, value: postgres}
+            - {name: APP_ENV, value: production}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: logiq-secrets, key: postgres-password}}
+            - name: JWT_SECRET
+              valueFrom: {secretKeyRef: {name: logiq-secrets, key: jwt-secret}}
+            - name: ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: logiq-secrets, key: admin-password}}
+            - name: INGEST_API_KEY
+              valueFrom: {secretKeyRef: {name: logiq-secrets, key: ingest-api-key}}

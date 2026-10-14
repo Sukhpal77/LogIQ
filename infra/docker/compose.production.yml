@@ -1,0 +1,83 @@
+name: logiq-production
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: logiq
+      POSTGRES_USER: logiq
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logiq -d logiq"]
+      interval: 5s
+      retries: 20
+  redis:
+    image: public.ecr.aws/docker/library/redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "always", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    volumes: ["redisdata:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+  backend:
+    build: ../../backend
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      APP_ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      REDIS_URL: redis://redis:6379/0
+      PUBLIC_URL: https://${LOGIQ_DOMAIN:?set LOGIQ_DOMAIN}
+      BILLING_PROVIDER: ${BILLING_PROVIDER:-disabled}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:?set SECRETS_ENCRYPTION_KEY}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      CORS_ORIGINS: https://${LOGIQ_DOMAIN:?set LOGIQ_DOMAIN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      ANALYSIS_INTERVAL_SECONDS: ${ANALYSIS_INTERVAL_SECONDS:-60}
+      ANALYSIS_WINDOW_MINUTES: ${ANALYSIS_WINDOW_MINUTES:-15}
+      RETENTION_DAYS: ${RETENTION_DAYS:-30}
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+  dashboard:
+    build:
+      context: ../../frontend/dashboard
+      args: {NEXT_PUBLIC_API_URL: /api}
+    restart: unless-stopped
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      LOGIQ_DOMAIN: ${LOGIQ_DOMAIN:?set LOGIQ_DOMAIN}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [backend, dashboard]
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:
+  caddyconfig:

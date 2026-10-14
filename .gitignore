@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.test-tmp*/
+.npm-cache/
+node_modules/
+.next/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+# Private database snapshots and local generated test credentials
+**/.backups/
+**/.showcase-credentials.json

@@ -1,0 +1,22 @@
+[Unit]
+Description=LogIQ durable application telemetry collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=logiq-collector
+Group=logiq-collector
+EnvironmentFile=/etc/logiq/collector.env
+WorkingDirectory=/var/lib/logiq-collector
+ExecStart=/usr/bin/python3 /opt/logiq/collector/collector.py --queue /var/lib/logiq-collector/queue.sqlite3
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/logiq-collector
+
+[Install]
+WantedBy=multi-user.target
